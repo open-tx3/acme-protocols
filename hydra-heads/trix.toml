@@ -1,7 +1,28 @@
 [protocol]
+scope = "open-tx3"
 name = "hydra-heads"
 version = "0.0.0"
+description = "Cardano L1 transactions that drive a Hydra Head through its lifecycle"
+repository = "https://github.com/open-tx3/acme-protocols"
 main = "main.tx3"
+readme = "README.md"
 
 [ledger]
 family = "cardano"
+
+# Per-network profiles. Each loads `.env.<profile>` to populate the
+# network-level `env { ... }` block in main.tx3 (validator reference
+# scripts and the protocol-wide ST token name). Per-head values
+# (head_id, head_policy_ref) are passed as tx parameters.
+
+[profile.devnet]
+env_file = ".env.devnet"
+
+[profile.preview]
+env_file = ".env.preview"
+
+[profile.preprod]
+env_file = ".env.preprod"
+
+[profile.mainnet]
+env_file = ".env.mainnet"

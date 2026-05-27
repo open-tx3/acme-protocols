@@ -40,24 +40,23 @@ party DepositScript;
 // Per-head deployment configuration. The HeadPolicy minting policy is
 // parameterized by a seed OutputRef, so its hash is unique per head.
 
+// `env` holds only network-level values: the validator reference scripts
+// (deployed once per network — see `hydra-node/networks.json` upstream)
+// and the protocol-wide ST token name. Per-head identity (`head_id`,
+// which is also the HeadPolicy currency symbol) is passed as a tx
+// parameter to keep profiles head-agnostic.
 env {
-    // Minting policy that controls the State Thread (ST) and the
-    // per-participant Participation Tokens (PT) for this head.
-    head_policy_id: Bytes,
-
-    // State Thread token name (hex). Hydra uses "HydraHeadV1".
+    // State Thread token name. Hydra hard-codes "HydraHeadV1"
+    // ("4879647261486561645631" hex) — same on every network.
     st_token_name: Bytes,
 
-    // Reference scripts (CIP-31) for the validators, so transactions
-    // don't have to inline the Plutus bodies every time.
+    // Reference scripts (CIP-31) for the four head validators. Hydra
+    // publishes these once per network/version; values come from
+    // https://github.com/cardano-scaling/hydra/blob/master/hydra-node/networks.json
     head_script_ref: UtxoRef,
     initial_script_ref: UtxoRef,
     commit_script_ref: UtxoRef,
     deposit_script_ref: UtxoRef,
-
-    // Reference script for the HeadPolicy minting policy itself
-    // (used at init / abort / fanout).
-    head_policy_ref: UtxoRef,
 }
 
 // ------------------------------------------------------------------
@@ -203,6 +202,7 @@ type DepositRedeemer {
 tx init(
     seed_ref: UtxoRef,
     head_id: Bytes,
+    head_policy_ref: UtxoRef,
     contestation_period: Int,
     parties: List<Bytes>,
     participants: List<Bytes>,
@@ -214,7 +214,7 @@ tx init(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
+        st: AnyAsset(head_id, st_token_name, 1),
         params: HeadParameters {
             contestation_period: contestation_period,
             parties: parties,
@@ -275,7 +275,7 @@ tx init(
     output initial {
         to: InitialScript,
         amount: Ada(initial_utxo_lovelace)
-              + AnyAsset(head_policy_id, head_id, pt_count),
+              + AnyAsset(head_id, head_id, pt_count),
         datum: InitialDatum {
             head_id: head_id,
         },
@@ -309,7 +309,7 @@ tx commit(
     new_commit_ref_idx: Int,
 ) {
     locals {
-        pt: AnyAsset(head_policy_id, head_id, 1),
+        pt: AnyAsset(head_id, head_id, 1),
     }
 
     reference initial_script {
@@ -373,6 +373,7 @@ tx commit(
 // remaining µInitial PT — real protocol aggregates N of each.
 tx abort(
     head_id: Bytes,
+    head_policy_ref: UtxoRef,
     head_ref: UtxoRef,
     commit_ref: UtxoRef,
     initial_ref: UtxoRef,
@@ -381,8 +382,8 @@ tx abort(
     pt_burn_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pt_bundle: AnyAsset(head_policy_id, head_id, pt_burn_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pt_bundle: AnyAsset(head_id, head_id, pt_burn_count),
     }
 
     reference policy_ref {
@@ -470,8 +471,8 @@ tx collect_com(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pts: AnyAsset(head_policy_id, head_id, pt_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pts: AnyAsset(head_id, head_id, pt_count),
     }
 
     reference head_script {
@@ -574,8 +575,8 @@ tx increment(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pts: AnyAsset(head_policy_id, head_id, pt_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pts: AnyAsset(head_id, head_id, pt_count),
     }
 
     reference head_script {
@@ -690,8 +691,8 @@ tx decrement(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pts: AnyAsset(head_policy_id, head_id, pt_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pts: AnyAsset(head_id, head_id, pt_count),
     }
 
     reference head_script {
@@ -759,8 +760,8 @@ tx close(
     initial_contesters: List<Bytes>,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pts: AnyAsset(head_policy_id, head_id, pt_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pts: AnyAsset(head_id, head_id, pt_count),
     }
 
     reference head_script {
@@ -823,8 +824,8 @@ tx contest(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pts: AnyAsset(head_policy_id, head_id, pt_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pts: AnyAsset(head_id, head_id, pt_count),
     }
 
     reference head_script {
@@ -883,6 +884,7 @@ tx contest(
 tx fanout(
     head_ref: UtxoRef,
     head_id: Bytes,
+    head_policy_ref: UtxoRef,
     pt_count: Int,
     fanout_lovelace: Int,
     fanout_recipient: Bytes,
@@ -891,8 +893,8 @@ tx fanout(
     final_utxo_hash: Bytes,
 ) {
     locals {
-        st: AnyAsset(head_policy_id, st_token_name, 1),
-        pts: AnyAsset(head_policy_id, head_id, pt_count),
+        st: AnyAsset(head_id, st_token_name, 1),
+        pts: AnyAsset(head_id, head_id, pt_count),
     }
 
     reference policy_ref {
