@@ -6,6 +6,7 @@ description = "Cardano L1 transactions that drive a Hydra Head through its lifec
 repository = "https://github.com/open-tx3/acme-protocols"
 main = "main.tx3"
 readme = "README.md"
+logo = "logo.png"
 
 [ledger]
 family = "cardano"
