@@ -16,22 +16,19 @@
 // Parties
 // ------------------------------------------------------------------
 
-// A head participant (wallet that submits L1 txs and signs snapshots).
+/// A head participant wallet that submits L1 txs and signs snapshots.
 party Participant;
 
-// µHead validator — locks the head state UTxO (the one carrying the ST).
+/// µHead validator address; locks the head state UTxO carrying the ST token.
 party HeadScript;
 
-// µInitial validator — locks each participant's PT after `init`, until
-// it's either consumed by `commit` or burned by `abort`.
+/// µInitial validator address; locks each participant's PT between `init` and `commit`/`abort`.
 party InitialScript;
 
-// µCommit validator — locks a participant's committed UTxOs between
-// `commit` and `collectCom` (or `abort`).
+/// µCommit validator address; locks a participant's committed UTxOs between `commit` and `collectCom`/`abort`.
 party CommitScript;
 
-// µDeposit validator — locks UTxOs queued for an incremental commit
-// (used by `deposit` / `recover` / `increment`).
+/// µDeposit validator address; locks UTxOs queued for an incremental commit.
 party DepositScript;
 
 // ------------------------------------------------------------------
@@ -46,16 +43,20 @@ party DepositScript;
 // which is also the HeadPolicy currency symbol) is passed as a tx
 // parameter to keep profiles head-agnostic.
 env {
-    // State Thread token name. Hydra hard-codes "HydraHeadV1"
-    // ("4879647261486561645631" hex) — same on every network.
+    // Hydra hard-codes "HydraHeadV1" ("4879647261486561645631" hex) — same on every network.
+    /// State Thread token name minted by the HeadPolicy (protocol-wide constant).
     st_token_name: Bytes,
 
     // Reference scripts (CIP-31) for the four head validators. Hydra
     // publishes these once per network/version; values come from
     // https://github.com/cardano-scaling/hydra/blob/master/hydra-node/networks.json
+    /// CIP-31 reference script UTxO for the µHead validator on this network.
     head_script_ref: UtxoRef,
+    /// CIP-31 reference script UTxO for the µInitial validator on this network.
     initial_script_ref: UtxoRef,
+    /// CIP-31 reference script UTxO for the µCommit validator on this network.
     commit_script_ref: UtxoRef,
+    /// CIP-31 reference script UTxO for the µDeposit validator on this network.
     deposit_script_ref: UtxoRef,
 }
 
@@ -194,23 +195,28 @@ type DepositRedeemer {
 // Transactions
 // ------------------------------------------------------------------
 
-// 1. init
-// Any participant kicks off a new head. A seed UTxO is consumed (so the
-// HeadPolicy currency symbol is unique). HeadPolicy mints ST + one PT
-// per participant; ST goes to µHead in `Initial` state, each PT goes
-// to µInitial pre-allocated to its participant.
+/// Open a new Hydra head: consume a seed UTxO and mint ST + one PT per participant.
 tx init(
+    /// Seed UTxO consumed to make the HeadPolicy currency symbol unique.
     seed_ref: UtxoRef,
+    /// Currency symbol of the HeadPolicy for this head (== head identifier).
     head_id: Bytes,
+    /// Reference script UTxO carrying the HeadPolicy minting policy.
     head_policy_ref: UtxoRef,
+    /// Contestation period in milliseconds, baked into the head parameters.
     contestation_period: Int,
+    /// Hydra signing keys (vkey-style) for L2 multi-sig.
     parties: List<Bytes>,
+    /// Cardano vkey hashes of the L1 participants.
     participants: List<Bytes>,
     // Lovelace pinned to each output (caller pre-computes per protocol params).
+    /// Lovelace pinned on the µHead state UTxO (min-UTxO from protocol params).
     head_utxo_lovelace: Int,
+    /// Lovelace pinned on the µInitial PT bucket UTxO.
     initial_utxo_lovelace: Int,
     // Total PT count must match participants count; caller passes amount
     // because tx3 has no `length(list)` builtin.
+    /// Number of participation tokens to mint; must equal `participants` length.
     pt_count: Int,
 ) {
     locals {
@@ -294,18 +300,23 @@ tx init(
     }
 }
 
-// 2. commit
-// A participant moves their PT from µInitial to µCommit, attaching
-// the L1 UTxOs they want inside the head. Committed UTxOs are spent
-// from the participant's wallet and locked at µCommit.
+/// Move a participant's PT from µInitial to µCommit, locking the funds they want inside the head.
 tx commit(
+    /// HeadPolicy currency symbol identifying the target head.
     head_id: Bytes,
+    /// Hydra party (signing key) committing the funds.
     party: Bytes,
+    /// Canonical CBOR encoding of the L1 UTxOs being committed.
     committed_cbor: Bytes,
-    committed_lovelace: Int,       // Ada value of the bundle being committed
-    commit_utxo_lovelace: Int,     // min UTxO for the produced µCommit output
-    initial_pt_ref: UtxoRef,       // the µInitial UTxO carrying this PT
-    new_commit_ref_tx: Bytes,      // outpoint of the produced µCommit UTxO
+    /// Ada value of the bundle being committed.
+    committed_lovelace: Int,
+    /// Min-UTxO lovelace required on the produced µCommit output.
+    commit_utxo_lovelace: Int,
+    /// The µInitial UTxO carrying this participant's PT.
+    initial_pt_ref: UtxoRef,
+    /// Tx hash of the µCommit UTxO this commit will produce (self-reference for the redeemer).
+    new_commit_ref_tx: Bytes,
+    /// Output index of the µCommit UTxO this commit will produce.
     new_commit_ref_idx: Int,
 ) {
     locals {
@@ -364,21 +375,25 @@ tx commit(
     }
 }
 
-// 3. abort
-// Cancels the head while still in `Initial`. All PTs are burned, every
-// µCommit (if any) is refunded to its party, and µInitial outputs that
-// never committed are spent and burned.
-//
+/// Cancel an `Initial` head: burn ST + PTs, refund pending µCommit funds.
 // Modelled here for a single still-pending µCommit and a single
 // remaining µInitial PT — real protocol aggregates N of each.
 tx abort(
+    /// HeadPolicy currency symbol of the head being aborted.
     head_id: Bytes,
+    /// Reference script UTxO carrying the HeadPolicy minting policy.
     head_policy_ref: UtxoRef,
+    /// The µHead state UTxO (in `Initial`) being consumed.
     head_ref: UtxoRef,
+    /// A pending µCommit UTxO to refund.
     commit_ref: UtxoRef,
+    /// A µInitial PT UTxO whose token will be burned.
     initial_ref: UtxoRef,
+    /// Lovelace refunded back to the committing party.
     refund_lovelace: Int,
+    /// Address receiving the refunded committed funds.
     refund_recipient: Bytes,
+    /// Number of participation tokens to burn alongside the ST.
     pt_burn_count: Int,
 ) {
     locals {
@@ -454,20 +469,23 @@ tx abort(
     }
 }
 
-// 4. collectCom
-// Aggregates every µCommit UTxO into the head. ST stays on µHead, the
-// head transitions Initial → Open with `utxo_hash` set to the Merkle
-// root of the union of committed UTxOs.
-//
+/// Aggregate every µCommit UTxO into the head; transition Initial → Open.
 // Modelled for one µCommit input — extend by replicating `commit_in_*`
 // in real deployments.
 tx collect_com(
+    /// HeadPolicy currency symbol of the head being opened.
     head_id: Bytes,
+    /// The µHead state UTxO (in `Initial`) being consumed.
     head_ref: UtxoRef,
+    /// A µCommit UTxO being absorbed into the head.
     commit_ref: UtxoRef,
+    /// Head parameters carried over from the `Initial` datum.
     params: HeadParameters,
+    /// Merkle root of the initial committed UTxO set.
     initial_utxo_hash: Bytes,
+    /// Lovelace pinned on the new µHead `Open` output.
     head_out_lovelace: Int,
+    /// Number of participation tokens accompanying the ST on the head output.
     pt_count: Int,
 ) {
     locals {
@@ -525,13 +543,17 @@ tx collect_com(
     }
 }
 
-// 5. deposit (incremental commit, step 1)
-// Locks new funds at µDeposit, awaiting inclusion in an L2 snapshot.
+/// Lock new funds at µDeposit for an incremental commit, awaiting an L2 snapshot.
 tx deposit(
+    /// HeadPolicy currency symbol of the target head.
     head_id: Bytes,
+    /// POSIX-ms deadline after which the depositor may `recover` the funds.
     deadline: Int,
+    /// Canonical CBOR encoding of the L1 UTxOs being deposited.
     deposit_cbor: Bytes,
+    /// Ada value of the bundle being deposited.
     deposit_lovelace: Int,
+    /// Min-UTxO lovelace required on the produced µDeposit output.
     deposit_utxo_lovelace: Int,
 ) {
     input* source {
@@ -559,19 +581,27 @@ tx deposit(
     }
 }
 
-// 6. increment (incremental commit, step 2)
-// After L2 consensus, the head pulls the deposit into its state UTxO,
-// bumps the snapshot number, and updates `utxo_hash`.
+/// Pull an L2-confirmed deposit into the head, bumping snapshot number and utxo hash.
 tx increment(
+    /// The µHead state UTxO (in `Open`) being consumed.
     head_ref: UtxoRef,
+    /// The µDeposit UTxO being absorbed into the head.
     deposit_ref: UtxoRef,
+    /// Head parameters carried over from the previous `Open` datum.
     params: HeadParameters,
+    /// New snapshot number after absorbing the deposit.
     new_snapshot_number: Int,
+    /// New Merkle root of the committed UTxO set.
     new_utxo_hash: Bytes,
+    /// Multi-party signature over the new snapshot.
     signature: Bytes,
+    /// Lovelace pinned on the new µHead `Open` output, excluding the pulled amount.
     head_out_lovelace: Int,
+    /// Lovelace pulled in from the deposit.
     pulled_lovelace: Int,
+    /// HeadPolicy currency symbol of the target head.
     head_id: Bytes,
+    /// Number of participation tokens accompanying the ST on the head output.
     pt_count: Int,
 ) {
     locals {
@@ -636,10 +666,11 @@ tx increment(
     }
 }
 
-// 7. recover
-// If a deposit isn't claimed by `deadline`, the depositor reclaims it.
+/// Reclaim a µDeposit UTxO after its deadline has passed.
 tx recover(
+    /// The µDeposit UTxO being reclaimed.
     deposit_ref: UtxoRef,
+    /// Lovelace value carried by the deposit, refunded to the depositor.
     refund_lovelace: Int,
 ) {
     reference deposit_script {
@@ -675,19 +706,27 @@ tx recover(
     }
 }
 
-// 8. decrement (incremental decommit)
-// Produces the L1 output for funds the head agreed to release, without
-// closing it. Updates snapshot_number and utxo_hash.
+/// Release funds from the head onto L1 without closing it (incremental decommit).
 tx decrement(
+    /// The µHead state UTxO (in `Open`) being consumed.
     head_ref: UtxoRef,
+    /// Head parameters carried over from the previous `Open` datum.
     params: HeadParameters,
+    /// New snapshot number after the decommit.
     new_snapshot_number: Int,
+    /// New Merkle root of the committed UTxO set.
     new_utxo_hash: Bytes,
+    /// Multi-party signature over the new snapshot.
     signature: Bytes,
+    /// Lovelace pinned on the new µHead `Open` output.
     head_out_lovelace: Int,
+    /// Lovelace amount being released back to L1.
     released_lovelace: Int,
+    /// L1 address receiving the released funds.
     release_recipient: Bytes,
+    /// HeadPolicy currency symbol of the target head.
     head_id: Bytes,
+    /// Number of participation tokens accompanying the ST on the head output.
     pt_count: Int,
 ) {
     locals {
@@ -742,21 +781,29 @@ tx decrement(
     }
 }
 
-// 9. close
-// Any participant publishes a confirmed snapshot to L1. The head moves
-// from Open to Closed, and a contestation deadline = now + cp is set.
+/// Publish a confirmed snapshot to L1, transitioning the head Open → Closed.
 tx close(
+    /// The µHead state UTxO (in `Open`) being consumed.
     head_ref: UtxoRef,
+    /// Head parameters carried over from the `Open` datum.
     params: HeadParameters,
+    /// Snapshot number being posted on close.
     snapshot_number: Int,
+    /// Merkle root of the snapshot's UTxO set.
     utxo_hash: Bytes,
+    /// Multi-party signature over the snapshot.
     signature: Bytes,
+    /// Lovelace pinned on the new µHead `Closed` output.
     head_out_lovelace: Int,
+    /// POSIX-ms contestation deadline (T_final = now + contestation_period).
     deadline: Int,
+    /// HeadPolicy currency symbol of the target head.
     head_id: Bytes,
+    /// Number of participation tokens accompanying the ST on the head output.
     pt_count: Int,
     // Pass an empty list; on close the contester set starts empty.
     // Tx3 has no `[]` literal in this position, so it's a parameter.
+    /// Initial contester set written into the `Closed` datum (typically empty).
     initial_contesters: List<Bytes>,
 ) {
     locals {
@@ -806,21 +853,29 @@ tx close(
     }
 }
 
-// 10. contest
-// Before `deadline`, anyone can post a more recent snapshot. The
-// validator enforces newer-snapshot semantics and adds the contester
-// to the `contesters` list.
+/// Post a newer snapshot during the contestation window to override the closed state.
 tx contest(
+    /// The µHead state UTxO (in `Closed`) being consumed.
     head_ref: UtxoRef,
+    /// Head parameters carried over from the `Closed` datum.
     params: HeadParameters,
+    /// Newer snapshot number being asserted.
     snapshot_number: Int,
+    /// Merkle root of the newer snapshot's UTxO set.
     utxo_hash: Bytes,
+    /// Multi-party signature over the newer snapshot.
     signature: Bytes,
+    /// Vkey hash of the participant posting this contest.
     contester: Bytes,
+    /// Updated contester list (existing entries with `contester` appended).
     contesters: List<Bytes>,
+    /// POSIX-ms contestation deadline carried over (unchanged by contest).
     deadline: Int,
+    /// Lovelace pinned on the new µHead `Closed` output.
     head_out_lovelace: Int,
+    /// HeadPolicy currency symbol of the target head.
     head_id: Bytes,
+    /// Number of participation tokens accompanying the ST on the head output.
     pt_count: Int,
 ) {
     locals {
@@ -874,22 +929,27 @@ tx contest(
     }
 }
 
-// 11. fanout
-// After the contestation deadline, the head state UTxO is consumed,
-// ST + all PTs are burned, and the final L2 UTxO set is materialized
-// back onto L1.
-//
+/// Finalize a Closed head past its deadline: burn ST + PTs and materialize the L2 UTxO set on L1.
 // Modelled with one consolidated output to a single recipient; real
 // fanout produces one output per UTxO in the final snapshot.
 tx fanout(
+    /// The µHead state UTxO (in `Closed`) being consumed.
     head_ref: UtxoRef,
+    /// HeadPolicy currency symbol of the head being finalized.
     head_id: Bytes,
+    /// Reference script UTxO carrying the HeadPolicy minting policy.
     head_policy_ref: UtxoRef,
+    /// Number of participation tokens to burn alongside the ST.
     pt_count: Int,
+    /// Lovelace materialized back onto L1 from the final snapshot.
     fanout_lovelace: Int,
+    /// Address receiving the consolidated fanout output.
     fanout_recipient: Bytes,
+    /// Slot at or after which the validator accepts the fanout (≥ contestation deadline).
     deadline_slot: Int,
+    /// Final snapshot number being materialized.
     final_snapshot_number: Int,
+    /// Final Merkle root of the L2 UTxO set being materialized.
     final_utxo_hash: Bytes,
 ) {
     locals {
