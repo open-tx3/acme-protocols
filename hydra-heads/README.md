@@ -50,138 +50,48 @@ The on-chain validators (`µHead`, `µInitial`, `µCommit`, `µDeposit`, and the
 
 ## Caller preparation
 
-### All transactions
+Off-chain work required before invoking any lifecycle transaction. Per-parameter documentation is rendered from `main.tx3` docstrings — this section only covers what the caller must produce, query, or compute outside the tx3 module itself.
 
-| Parameter | Source |
-|---|---|
-| `head_id: Bytes` | HeadPolicy currency symbol for this head. Computed off-chain by applying the seed `OutputRef` to the policy template; identical for every tx in the head's lifecycle. |
-| `pt_count: Int` | Number of participation tokens accompanying the ST (must equal participant count). |
+### Computing `head_id`
 
-### `init`
+The `HeadPolicy` minting policy is parameterised by the `seed_ref` consumed in `init`. Apply the seed `OutputRef` to the policy template and take the blake2b-224 hash — that's the head's currency symbol and the value reused as `head_id` in every subsequent transaction.
 
-| Parameter | Source |
-|---|---|
-| `seed_ref: UtxoRef` | A spendable UTxO from the caller's wallet, used to make the HeadPolicy currency symbol unique. |
-| `head_policy_ref: UtxoRef` | CIP-31 reference script UTxO for the HeadPolicy minting policy. |
-| `contestation_period: Int` | Head contestation period in milliseconds; baked into the head parameters. |
-| `parties: List<Bytes>` | Hydra signing keys (vkey-style) for the L2 multi-sig. Passed as an array. |
-| `participants: List<Bytes>` | Cardano vkey hashes of the L1 participants. Passed as an array. |
-| `head_utxo_lovelace: Int` | Min-UTxO lovelace pinned on the `µHead` state UTxO. Pre-computed from protocol params. |
-| `initial_utxo_lovelace: Int` | Min-UTxO lovelace pinned on the `µInitial` PT bucket UTxO. |
+### Sourcing reference scripts
 
-### `commit`
+`head_policy_ref` (passed to `init`, `abort`, `fanout`) and the four validator reference scripts in env come from the per-network Hydra deployment table at [`hydra-node/networks.json`](https://github.com/cardano-scaling/hydra/blob/master/hydra-node/networks.json).
 
-| Parameter | Source |
-|---|---|
-| `party: Bytes` | The Hydra signing key of the participant making the commit. |
-| `committed_cbor: Bytes` | Canonical CBOR encoding of the L1 UTxOs being committed (constructed externally). |
-| `committed_lovelace: Int` | Total ada value of the bundle being committed. |
-| `commit_utxo_lovelace: Int` | Min-UTxO lovelace required on the produced `µCommit` output. |
-| `initial_pt_ref: UtxoRef` | The `µInitial` UTxO carrying this participant's PT. |
-| `new_commit_ref_tx`, `new_commit_ref_idx` | Self-reference for the produced `µCommit` UTxO, baked into the `ViaCommit` redeemer. |
+### Pre-computing min-UTxO lovelace
 
-### `abort`
+Every script output needs a lovelace amount satisfying the protocol's min-UTxO rule (`head_utxo_lovelace`, `initial_utxo_lovelace`, `commit_utxo_lovelace`, `deposit_utxo_lovelace`, `head_out_lovelace`). Compute against current protocol params.
 
-| Parameter | Source |
-|---|---|
-| `head_policy_ref: UtxoRef` | CIP-31 reference script UTxO for the HeadPolicy. |
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Initial`) being consumed. |
-| `commit_ref: UtxoRef` | A pending `µCommit` UTxO to refund. |
-| `initial_ref: UtxoRef` | A `µInitial` PT UTxO whose token will be burned. |
-| `refund_lovelace: Int` | Lovelace refunded back to the committing party. |
-| `refund_recipient: Bytes` | Address (raw bytes) receiving the refunded committed funds. |
-| `pt_burn_count: Int` | Number of PTs to burn alongside the ST. |
+### Querying on-chain UTxOs
 
-### `collect_com`
+Each lifecycle step needs the live UTxOs it consumes: the `µHead` state UTxO (`head_ref`), a specific participant's `µInitial` PT bucket (`initial_pt_ref`, `initial_ref`), pending `µCommit` UTxOs (`commit_ref`), pending `µDeposit` UTxOs (`deposit_ref`). Look them up by validator address and identifying token (ST for the head state, PT for the others).
 
-| Parameter | Source |
-|---|---|
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Initial`) being consumed. |
-| `commit_ref: UtxoRef` | A `µCommit` UTxO being absorbed into the head. |
-| `params: HeadParameters` | Head parameters carried over from the `Initial` datum. |
-| `initial_utxo_hash: Bytes` | Merkle root of the initial committed UTxO set. |
-| `head_out_lovelace: Int` | Lovelace pinned on the new `µHead` `Open` output. |
+### Canonical CBOR for `committed` / `deposit`
 
-### `deposit`
+`commit.committed_cbor` and `deposit.deposit_cbor` are the canonical CBOR encodings of the L1 UTxO bundles being placed inside the head. The on-chain validator hashes these to verify inclusion in the snapshot at `collect_com` / `increment`.
 
-| Parameter | Source |
-|---|---|
-| `deadline: Int` | POSIX-ms deadline after which the depositor may `recover` the funds. |
-| `deposit_cbor: Bytes` | Canonical CBOR encoding of the L1 UTxOs being deposited. |
-| `deposit_lovelace: Int` | Ada value of the bundle being deposited. |
-| `deposit_utxo_lovelace: Int` | Min-UTxO lovelace on the produced `µDeposit` output. |
+### Snapshot artifacts from `hydra-node`
 
-### `increment`
+`close`, `contest`, `increment`, `decrement`, and `fanout` carry snapshot data produced by L2 consensus inside `hydra-node`: `snapshot_number`, `utxo_hash` (Merkle root of the L2 UTxO set), `signature` (multi-party sig), and on `collect_com` the initial `initial_utxo_hash`. These all come from outside this tx3.
 
-| Parameter | Source |
-|---|---|
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Open`) being consumed. |
-| `deposit_ref: UtxoRef` | The `µDeposit` UTxO being absorbed into the head. |
-| `params: HeadParameters` | Head parameters from the previous `Open` datum. |
-| `new_snapshot_number: Int` | New snapshot number after absorbing the deposit. |
-| `new_utxo_hash: Bytes` | New Merkle root of the committed UTxO set. |
-| `signature: Bytes` | Multi-party signature over the new snapshot. |
-| `head_out_lovelace: Int` | Lovelace pinned on the new `µHead` `Open` output, excluding the pulled amount. |
-| `pulled_lovelace: Int` | Lovelace pulled in from the deposit. |
+### Self-reference in `commit`
 
-### `recover`
+The `ViaCommit` redeemer carries the `OutputRef` of the `µCommit` UTxO that the same transaction produces. Predict the new tx hash and output index (e.g. by building the body first and hashing it) before setting `new_commit_ref_tx` / `new_commit_ref_idx`.
 
-| Parameter | Source |
-|---|---|
-| `deposit_ref: UtxoRef` | The `µDeposit` UTxO being reclaimed. |
-| `refund_lovelace: Int` | Lovelace value carried by the deposit; refunded to the depositor. The caller must also ensure the tx's validity lower bound is ≥ the datum's deadline. |
+### Deadline-driven validity bounds
 
-### `decrement`
+`recover` and `fanout` need `validity.since_slot ≥ datum.deadline`, but tx3 can't read the datum into the validity block. Pass `deadline_slot` equal to the datum's deadline.
 
-| Parameter | Source |
-|---|---|
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Open`) being consumed. |
-| `params: HeadParameters` | Head parameters from the previous `Open` datum. |
-| `new_snapshot_number: Int` | New snapshot number after the decommit. |
-| `new_utxo_hash: Bytes` | New Merkle root of the committed UTxO set. |
-| `signature: Bytes` | Multi-party signature over the new snapshot. |
-| `head_out_lovelace: Int` | Lovelace pinned on the new `µHead` `Open` output. |
-| `released_lovelace: Int` | Lovelace being released back to L1. |
-| `release_recipient: Bytes` | L1 address (raw bytes) receiving the released funds. |
+### List-literal workarounds
 
-### `close`
+- `close.initial_contesters` — pass `[]` at invoke time (no empty-list literal in this position).
+- `contest.contesters` — pass the prior contester list with the caller's vkey hash appended.
 
-| Parameter | Source |
-|---|---|
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Open`) being consumed. |
-| `params: HeadParameters` | Head parameters from the `Open` datum. |
-| `snapshot_number: Int` | Snapshot number being posted on close. |
-| `utxo_hash: Bytes` | Merkle root of the snapshot's UTxO set. |
-| `signature: Bytes` | Multi-party signature over the snapshot. |
-| `head_out_lovelace: Int` | Lovelace pinned on the new `µHead` `Closed` output. |
-| `deadline: Int` | POSIX-ms contestation deadline (`now + contestation_period`). |
-| `initial_contesters: List<Bytes>` | Empty list at call time (tx3 has no empty-list literal here). |
+### `pt_count` must match the participant set
 
-### `contest`
-
-| Parameter | Source |
-|---|---|
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Closed`) being consumed. |
-| `params: HeadParameters` | Head parameters from the `Closed` datum. |
-| `snapshot_number: Int` | Newer snapshot number being asserted. |
-| `utxo_hash: Bytes` | Merkle root of the newer snapshot's UTxO set. |
-| `signature: Bytes` | Multi-party signature over the newer snapshot. |
-| `contester: Bytes` | Vkey hash of the participant posting this contest. |
-| `contesters: List<Bytes>` | Updated contester list (existing entries with `contester` appended). |
-| `deadline: Int` | Contestation deadline carried over from the `Closed` datum (unchanged by contest). |
-| `head_out_lovelace: Int` | Lovelace pinned on the new `µHead` `Closed` output. |
-
-### `fanout`
-
-| Parameter | Source |
-|---|---|
-| `head_ref: UtxoRef` | The `µHead` state UTxO (in `Closed`) being consumed. |
-| `head_policy_ref: UtxoRef` | CIP-31 reference script UTxO for the HeadPolicy. |
-| `fanout_lovelace: Int` | Lovelace materialised back onto L1 from the final snapshot. |
-| `fanout_recipient: Bytes` | Address (raw bytes) receiving the consolidated fanout output. |
-| `deadline_slot: Int` | Slot at or after which the validator accepts the fanout (≥ contestation deadline). |
-| `final_snapshot_number: Int` | Final snapshot number being materialised. |
-| `final_utxo_hash: Bytes` | Final Merkle root of the L2 UTxO set. |
+Real Hydra would derive PT count from the participant list, but tx3 has no `length()` builtin. Pass `pt_count` explicitly; it must equal `participants.length` on the mint side and the number of outstanding PTs on the burn side (`abort.pt_burn_count`, `fanout.pt_count`).
 
 ## References
 
