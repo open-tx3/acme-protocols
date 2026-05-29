@@ -1,0 +1,12 @@
+[protocol]
+scope = "open-tx3"
+name = "partner-chain-gov"
+version = "0.1.0"
+description = "Cardano L1 transactions for governance operations of a Cardano partner chain"
+repository = "https://github.com/open-tx3/acme-protocols"
+main = "main.tx3"
+readme = "README.md"
+logo = "logo.png"
+
+[ledger]
+family = "cardano"
