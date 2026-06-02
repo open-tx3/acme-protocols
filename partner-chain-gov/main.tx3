@@ -253,6 +253,47 @@ type CustomUtxoRef {
     index: Int,
 }
 
+// Named Token-Constructor Functions
+// =================================
+// Pure helpers that build the recurring native-asset values used throughout the
+// transaction templates from their env-configured policy/name. Each inlines to
+// the identical AnyAsset(...) it replaces, so transaction semantics are unchanged.
+
+// Reward token managed by the reserve, in the given quantity
+fn reward_tokens(amount: Int) -> AnyAsset {
+    AnyAsset(reward_token_policy_id, reward_token_asset_name, amount)
+}
+
+// Single reserve authorization token
+fn reserve_auth_token() -> AnyAsset {
+    AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1)
+}
+
+// Single governance token
+fn governance_token() -> AnyAsset {
+    AnyAsset(governance_policy_hash, governance_asset_name, 1)
+}
+
+// Single governed map entry token
+fn governed_map_token() -> AnyAsset {
+    AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1)
+}
+
+// Single version oracle governance token
+fn version_oracle_token() -> AnyAsset {
+    AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1)
+}
+
+// Illiquid circulation supply authority token, in the given quantity
+fn ics_authority_token(amount: Int) -> AnyAsset {
+    AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, amount)
+}
+
+// Single multi-signature policy token (empty asset name)
+fn multi_sig_token() -> AnyAsset {
+    multi_sig_token()
+}
+
 
 /// Initialize Partner Chain Governance System
 /// ========================================
@@ -287,17 +328,17 @@ tx init_governance() {
 
     // Mint the initial version oracle token for governance
     mint {
-        amount: AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1),
+        amount: version_oracle_token(),
         redeemer: MintRedeemer {
             script_id: governance_script_id,
             policy_hash: multi_sig_policy_hash,
         },
     }
-    
+
     // Create the governance UTxO at the version oracle validator
     output version_oracle_output {
         to: version_oracle_validator_address,
-        amount: AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1) + min_utxo(version_oracle_output),
+        amount: version_oracle_token() + min_utxo(version_oracle_output),
         datum: [governance_script_id, version_oracle_policy_hash],
         // Should use future cardano output script output
         // script: 0x59012801000032332222232332232533535323322123300100300232332300100123300700c2233500d375c004660060060026eb0004d5d08009bad357426ae88004dd600391299a999ab9a3371066464644600400264600200244a66a00220064426600c00466008008002601a44002601844004600600400200800a200a20082930b19180080091299a80088051191099a806299aa99a98011bac357426ae88d5d11aba2357446ae88d5d11aba2357446aae78dd51aba135573c6ea802484020401852002148000cc014014004c8c00400488ccc02048800488c94cd4ccd5cd19b8f00600100a00911223002003133005005002375c004002244004244002444a666aae7c004400c4cc008d5d08009aba200112200212212233001004003233001223370000400290001
@@ -375,7 +416,7 @@ tx insert_key_value(
     // Mint a new governed map token to represent this specific entry
     // Each entry requires its own unique token for identification and control
     mint {
-        amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
+        amount: governed_map_token(),
         redeemer: (),  // Unit redeemer - authorization comes from governance reference
     }
 
@@ -383,7 +424,7 @@ tx insert_key_value(
     // The key-value pair is stored directly in the datum for efficient querying
     output new_entry {
         to: governed_map_validator_address,
-        amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1) + min_utxo(new_entry),
+        amount: governed_map_token() + min_utxo(new_entry),
         datum: [key, value],    // Store the key-value pair as a list in the datum
     }
 
@@ -465,7 +506,7 @@ tx update_key_value(
     input existing_entry {
         from: governed_map_validator_address,
         ref: existing_utxo,
-        min_amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
+        min_amount: governed_map_token(),
         // datum_is: [key, value] - The current datum should match the key
         redeemer: (),
     }
@@ -556,7 +597,7 @@ tx remove_key_value(
     input entry_to_remove {
         from: governed_map_validator_address,
         ref: existing_utxo,
-        min_amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
+        min_amount: governed_map_token(),
         // datum_is: [key, value] - The current datum should match the key
         redeemer: (),
     }
@@ -650,7 +691,7 @@ tx insert_d_parameter(
     }
 
     mint {
-        amount: AnyAsset(multi_sig_policy_hash, "", 1),
+        amount: multi_sig_token(),
         redeemer: (),
     }
 
@@ -664,7 +705,7 @@ tx insert_d_parameter(
     // Return change to the payment address
     output {
         to: payment_address,
-        amount: source - fees - min_utxo(d_param_output) + AnyAsset(multi_sig_policy_hash, "", 1),
+        amount: source - fees - min_utxo(d_param_output) + multi_sig_token(),
     }
 
     // Required signers for the transaction
@@ -731,7 +772,7 @@ tx update_d_parameter(
     // Input for fees and minimum UTxO value
     input source {
         from: payment_address,
-        min_amount: fees + AnyAsset(multi_sig_policy_hash, "", 1),
+        min_amount: fees + multi_sig_token(),
     }
 
     // Consume the existing D-parameter UTxO
@@ -848,7 +889,7 @@ tx update_governance(
     // }
 
     mint {
-        amount: AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1),
+        amount: version_oracle_token(),
         redeemer: MintRedeemer {
             script_id: governance_script_id,
             policy_hash: multi_sig_policy_hash,
@@ -858,7 +899,7 @@ tx update_governance(
     // Create the new governance UTxO with updated parameters
     output new_governance_output {
         to: version_oracle_validator_address,
-        amount: current_governance + AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1), // + min_utxo(new_governance_output),
+        amount: current_governance + version_oracle_token(), // + min_utxo(new_governance_output),
         datum: [governance_script_id, version_oracle_policy_hash],  // [script_id, new_policy_hash]
     }
 
@@ -1345,32 +1386,32 @@ tx create_reserve(
     // Input for fees, minimum UTxO value, and reward tokens
     input source {
         from: payment_address,
-        min_amount: fees + min_utxo(reserve_output) + AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount),
+        min_amount: fees + min_utxo(reserve_output) + reward_tokens(reward_tokens_amount),
     }
 
     // Mint a reserve auth token
     mint {
-        amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
+        amount: reserve_auth_token(),
         redeemer: (),
     }
 
     // Mint governance token
     mint {
-        amount: AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: governance_token(),
         redeemer: (),
     }
 
     // Mint ICS authority tokens
     mint {
-        amount: AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, ics_initial_utxos_amount),
+        amount: ics_authority_token(ics_initial_utxos_amount),
         redeemer: (),
     }
 
     // Create the reserve UTxO with initial settings
     output reserve_output {
         to: reserve_validator_address,
-        amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1) + 
-                AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount) + 
+        amount: reserve_auth_token() +
+                reward_tokens(reward_tokens_amount) +
                 min_utxo(reserve_output),
         datum: [
             [reward_token_policy_id, reward_token_asset_name],     // ReserveImmutableSettings.token
@@ -1383,7 +1424,7 @@ tx create_reserve(
     // Note: In practice, this would need to be generated for the specific number needed
     output ics_output_1 {
         to: illiquid_circulation_supply_validator_address,
-        amount: AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, 1) + 
+        amount: ics_authority_token(1) + 
                 min_utxo(ics_output_1),
         datum: (),  // Unit datum
     }
@@ -1391,8 +1432,8 @@ tx create_reserve(
     // Return change to the payment address (including governance token)
     output {
         to: payment_address,
-        amount: source - fees - min_utxo(reserve_output) - AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount) + 
-                AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: source - fees - min_utxo(reserve_output) - reward_tokens(reward_tokens_amount) + 
+                governance_token(),
     }
 
     // Collateral for script execution
@@ -1482,35 +1523,35 @@ tx deposit_to_reserve(
     // Input for fees and tokens to deposit
     input source {
         from: payment_address,
-        min_amount: fees + AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount),
+        min_amount: fees + reward_tokens(deposit_amount),
     }
 
     // Consume the existing reserve UTxO
     input existing_reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
-        min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
+        min_amount: reserve_auth_token(),
         redeemer: 0,  // DepositToReserve redeemer
     }
 
     // Mint governance token for authorization
     mint {
-        amount: AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: governance_token(),
         redeemer: (),
     }
 
     // Create the updated reserve UTxO with additional tokens
     output updated_reserve {
         to: reserve_validator_address,
-        amount: existing_reserve + AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount),
+        amount: existing_reserve + reward_tokens(deposit_amount),
         // datum: preserve existing datum (same reserve settings)
     }
 
     // Return change to the payment address (including governance token)
     output {
         to: payment_address,
-        amount: source - fees - AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount) + 
-                AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: source - fees - reward_tokens(deposit_amount) + 
+                governance_token(),
     }
 
     // Collateral for script execution
@@ -1628,8 +1669,8 @@ tx release_from_reserve(
     input existing_reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
-        min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1) + 
-                    AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
+        min_amount: reserve_auth_token() +
+                    reward_tokens(release_amount),
         redeemer: 1,  // ReleaseFromReserve redeemer
     }
 
@@ -1637,7 +1678,7 @@ tx release_from_reserve(
     input existing_ics {
         from: illiquid_circulation_supply_validator_address,
         ref: existing_ics_utxo,
-        min_amount: AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, 1),
+        min_amount: ics_authority_token(1),
         redeemer: (),  // Unit redeemer for ICS
     }
 
@@ -1651,14 +1692,14 @@ tx release_from_reserve(
     // Create the updated reserve UTxO with reduced tokens
     output updated_reserve {
         to: reserve_validator_address,
-        amount: existing_reserve - AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
+        amount: existing_reserve - reward_tokens(release_amount),
         // datum: updated ReserveDatum with incremented token_total_amount_transferred
     }
 
     // Transfer released tokens to the illiquid supply with ReserveTransfer datum
     output updated_ics {
         to: illiquid_circulation_supply_validator_address,
-        amount: existing_ics + AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
+        amount: existing_ics + reward_tokens(release_amount),
         datum: 0,  // TokenTransferDatumV1::ReserveTransfer (Constr 0 [])
     }
 
@@ -1769,13 +1810,13 @@ tx update_reserve_settings(
     input existing_reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
-        min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
+        min_amount: reserve_auth_token(),
         redeemer: 2,  // UpdateReserve redeemer
     }
 
     // Mint governance token for authorization
     mint {
-        amount: AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: governance_token(),
         redeemer: (),
     }
 
@@ -1794,7 +1835,7 @@ tx update_reserve_settings(
     // Return change to the payment address (including governance token)
     output {
         to: payment_address,
-        amount: source - fees + AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: source - fees + governance_token(),
     }
 
     // Collateral for script execution
@@ -1895,13 +1936,13 @@ tx handover_reserve(
     input existing_reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
-        min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
+        min_amount: reserve_auth_token(),
         redeemer: 3,  // Handover redeemer
     }
 
     // Mint governance token for authorization
     mint {
-        amount: AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: governance_token(),
         redeemer: (),
     }
 
@@ -1915,14 +1956,14 @@ tx handover_reserve(
     // Note: The datum is set to ReserveTransfer if tokens > 0, otherwise unit datum
     output illiquid_supply_output {
         to: illiquid_circulation_supply_validator_address,
-        amount: existing_reserve - AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
+        amount: existing_reserve - reserve_auth_token(),
         datum: 0,  // TokenTransferDatumV1::ReserveTransfer (Constr 0 []) if tokens > 0, otherwise unit
     }
 
     // Return change to the payment address (including governance token)
     output {
         to: payment_address,
-        amount: source - fees + AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: source - fees + governance_token(),
     }
 
     // Collateral for script execution
