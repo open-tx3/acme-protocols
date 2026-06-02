@@ -192,6 +192,62 @@ type DepositRedeemer {
 }
 
 // ------------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------------
+// Pure functions inlined at every call site — they never change tx
+// semantics, only factor out repeated value/datum construction.
+
+// The State Thread asset for a head: one ST token under the HeadPolicy
+// (`head_id`) with the protocol-wide `st_token_name`.
+fn st(head_id: Bytes) -> AnyAsset {
+    AnyAsset(head_id, st_token_name, 1)
+}
+
+// `count` participation tokens under the HeadPolicy. In Hydra the PT
+// token name equals the head id (currency symbol), so name == policy.
+fn pts(head_id: Bytes, count: Int) -> AnyAsset {
+    AnyAsset(head_id, head_id, count)
+}
+
+// Re-wrap a `UtxoRef` as the on-chain `OutputRef` datum/redeemer type.
+fn output_ref(ref: UtxoRef) -> OutputRef {
+    OutputRef {
+        tx_hash: ref.tx_hash,
+        output_index: ref.output_index,
+    }
+}
+
+// The µHead `Open` state datum.
+fn head_open(
+    params: HeadParameters,
+    utxo_hash: Bytes,
+    snapshot_number: Int,
+) -> HeadState {
+    HeadState::Open {
+        params: params,
+        utxo_hash: utxo_hash,
+        snapshot_number: snapshot_number,
+    }
+}
+
+// The µHead `Closed` state datum.
+fn head_closed(
+    params: HeadParameters,
+    snapshot_number: Int,
+    utxo_hash: Bytes,
+    deadline: Int,
+    contesters: List<Bytes>,
+) -> HeadState {
+    HeadState::Closed {
+        params: params,
+        snapshot_number: snapshot_number,
+        utxo_hash: utxo_hash,
+        deadline: deadline,
+        contesters: contesters,
+    }
+}
+
+// ------------------------------------------------------------------
 // Transactions
 // ------------------------------------------------------------------
 
@@ -220,7 +276,7 @@ tx init(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
+        st: st(head_id),
         params: HeadParameters {
             contestation_period: contestation_period,
             parties: parties,
@@ -255,10 +311,7 @@ tx init(
     mint {
         amount: st,
         redeemer: HeadPolicyRedeemer::Mint {
-            seed: OutputRef {
-                tx_hash: seed_ref.tx_hash,
-                output_index: seed_ref.output_index,
-            },
+            seed: output_ref(seed_ref),
         },
     }
 
@@ -268,10 +321,7 @@ tx init(
         amount: Ada(head_utxo_lovelace) + st,
         datum: HeadState::Initial {
             params: params,
-            seed: OutputRef {
-                tx_hash: seed_ref.tx_hash,
-                output_index: seed_ref.output_index,
-            },
+            seed: output_ref(seed_ref),
         },
     }
 
@@ -281,7 +331,7 @@ tx init(
     output initial {
         to: InitialScript,
         amount: Ada(initial_utxo_lovelace)
-              + AnyAsset(head_id, head_id, pt_count),
+              + pts(head_id, pt_count),
         datum: InitialDatum {
             head_id: head_id,
         },
@@ -320,7 +370,7 @@ tx commit(
     new_commit_ref_idx: Int,
 ) {
     locals {
-        pt: AnyAsset(head_id, head_id, 1),
+        pt: pts(head_id, 1),
     }
 
     reference initial_script {
@@ -397,8 +447,8 @@ tx abort(
     pt_burn_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pt_bundle: AnyAsset(head_id, head_id, pt_burn_count),
+        st: st(head_id),
+        pt_bundle: pts(head_id, pt_burn_count),
     }
 
     reference policy_ref {
@@ -489,8 +539,8 @@ tx collect_com(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pts: AnyAsset(head_id, head_id, pt_count),
+        st: st(head_id),
+        pts: pts(head_id, pt_count),
     }
 
     reference head_script {
@@ -524,11 +574,7 @@ tx collect_com(
     output head_out {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
-        datum: HeadState::Open {
-            params: params,
-            utxo_hash: initial_utxo_hash,
-            snapshot_number: 0,
-        },
+        datum: head_open(params, initial_utxo_hash, 0),
     }
 
     signers {
@@ -605,8 +651,8 @@ tx increment(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pts: AnyAsset(head_id, head_id, pt_count),
+        st: st(head_id),
+        pts: pts(head_id, pt_count),
     }
 
     reference head_script {
@@ -625,10 +671,7 @@ tx increment(
             snapshot_number: new_snapshot_number,
             new_utxo_hash: new_utxo_hash,
             signature: signature,
-            deposit_ref: OutputRef {
-                tx_hash: deposit_ref.tx_hash,
-                output_index: deposit_ref.output_index,
-            },
+            deposit_ref: output_ref(deposit_ref),
         },
     }
 
@@ -647,11 +690,7 @@ tx increment(
     output head_out {
         to: HeadScript,
         amount: Ada(head_out_lovelace + pulled_lovelace) + st + pts,
-        datum: HeadState::Open {
-            params: params,
-            utxo_hash: new_utxo_hash,
-            snapshot_number: new_snapshot_number,
-        },
+        datum: head_open(params, new_utxo_hash, new_snapshot_number),
     }
 
     signers {
@@ -730,8 +769,8 @@ tx decrement(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pts: AnyAsset(head_id, head_id, pt_count),
+        st: st(head_id),
+        pts: pts(head_id, pt_count),
     }
 
     reference head_script {
@@ -757,11 +796,7 @@ tx decrement(
     output head_out {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
-        datum: HeadState::Open {
-            params: params,
-            utxo_hash: new_utxo_hash,
-            snapshot_number: new_snapshot_number,
-        },
+        datum: head_open(params, new_utxo_hash, new_snapshot_number),
     }
 
     output released {
@@ -807,8 +842,8 @@ tx close(
     initial_contesters: List<Bytes>,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pts: AnyAsset(head_id, head_id, pt_count),
+        st: st(head_id),
+        pts: pts(head_id, pt_count),
     }
 
     reference head_script {
@@ -834,13 +869,7 @@ tx close(
     output head_out {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
-        datum: HeadState::Closed {
-            params: params,
-            snapshot_number: snapshot_number,
-            utxo_hash: utxo_hash,
-            deadline: deadline,
-            contesters: initial_contesters,
-        },
+        datum: head_closed(params, snapshot_number, utxo_hash, deadline, initial_contesters),
     }
 
     signers {
@@ -879,8 +908,8 @@ tx contest(
     pt_count: Int,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pts: AnyAsset(head_id, head_id, pt_count),
+        st: st(head_id),
+        pts: pts(head_id, pt_count),
     }
 
     reference head_script {
@@ -910,13 +939,7 @@ tx contest(
     output head_out {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
-        datum: HeadState::Closed {
-            params: params,
-            snapshot_number: snapshot_number,
-            utxo_hash: utxo_hash,
-            deadline: deadline,
-            contesters: contesters,
-        },
+        datum: head_closed(params, snapshot_number, utxo_hash, deadline, contesters),
     }
 
     signers {
@@ -953,8 +976,8 @@ tx fanout(
     final_utxo_hash: Bytes,
 ) {
     locals {
-        st: AnyAsset(head_id, st_token_name, 1),
-        pts: AnyAsset(head_id, head_id, pt_count),
+        st: st(head_id),
+        pts: pts(head_id, pt_count),
     }
 
     reference policy_ref {
