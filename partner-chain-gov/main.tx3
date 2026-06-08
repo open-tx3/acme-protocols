@@ -280,9 +280,9 @@ tx init_governance() {
     }
 
     // Input: Genesis UTxO that will identify this Partner Chain
-    input genesis_input {
+    input genesis {
         from: payment_address,
-        min_amount: fees + min_utxo(version_oracle_output),
+        min_amount: fees + min_utxo(version_oracle),
     }
 
     // Mint the initial version oracle token for governance
@@ -295,18 +295,18 @@ tx init_governance() {
     }
     
     // Create the governance UTxO at the version oracle validator
-    output version_oracle_output {
+    output version_oracle {
         to: version_oracle_validator_address,
-        amount: AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1) + min_utxo(version_oracle_output),
+        amount: AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1) + min_utxo(version_oracle),
         datum: [governance_script_id, version_oracle_policy_hash],
         // Should use future cardano output script output
         // script: 0x59012801000032332222232332232533535323322123300100300232332300100123300700c2233500d375c004660060060026eb0004d5d08009bad357426ae88004dd600391299a999ab9a3371066464644600400264600200244a66a00220064426600c00466008008002601a44002601844004600600400200800a200a20082930b19180080091299a80088051191099a806299aa99a98011bac357426ae88d5d11aba2357446ae88d5d11aba2357446aae78dd51aba135573c6ea802484020401852002148000cc014014004c8c00400488ccc02048800488c94cd4ccd5cd19b8f00600100a00911223002003133005005002375c004002244004244002444a666aae7c004400c4cc008d5d08009aba200112200212212233001004003233001223370000400290001
     }
 
     // Return change to the genesis address
-    output {
+    output change {
         to: payment_address,
-        amount: genesis_input - fees - min_utxo(version_oracle_output),
+        amount: genesis - fees - min_utxo(version_oracle),
     }
 
     // Collateral for script execution
@@ -367,9 +367,9 @@ tx insert_key_value(
     // }
 
     // Input for transaction fees and minimum UTxO value for the new entry
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(new_entry),  // Calculate exact amount needed
+        min_amount: fees + min_utxo(map_entry),  // Calculate exact amount needed
     }
 
     // Mint a new governed map token to represent this specific entry
@@ -381,16 +381,16 @@ tx insert_key_value(
 
     // Create the new entry UTxO at the governed map validator
     // The key-value pair is stored directly in the datum for efficient querying
-    output new_entry {
+    output map_entry {
         to: governed_map_validator_address,
-        amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1) + min_utxo(new_entry),
+        amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1) + min_utxo(map_entry),
         datum: [key, value],    // Store the key-value pair as a list in the datum
     }
 
     // Return remaining change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - min_utxo(new_entry),
+        amount: payment - fees - min_utxo(map_entry),
     }
 
     cardano::plutus_witness {
@@ -456,13 +456,13 @@ tx update_key_value(
     // }
 
     // Input for fees and minimum UTxO value
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(updated_entry),
+        min_amount: fees + min_utxo(updated_map_entry),
     }
 
     // Consume the existing entry with the old value
-    input existing_entry {
+    input map_entry {
         from: governed_map_validator_address,
         ref: existing_utxo,
         min_amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
@@ -471,16 +471,16 @@ tx update_key_value(
     }
 
     // Create the updated entry with the new value
-    output updated_entry {
+    output updated_map_entry {
         to: governed_map_validator_address,
-        amount: existing_entry + min_utxo(updated_entry),
+        amount: map_entry + min_utxo(updated_map_entry),
         datum: [key, new_value],    // Store the key with the new value
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - min_utxo(updated_entry),
+        amount: payment - fees - min_utxo(updated_map_entry),
     }
 
     cardano::plutus_witness {
@@ -547,13 +547,13 @@ tx remove_key_value(
     // }
 
     // Input for transaction fees
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(removed_entry),
+        min_amount: fees + min_utxo(removed_map_entry),
     }
 
     // Consume the entry to be removed
-    input entry_to_remove {
+    input stale_entry {
         from: governed_map_validator_address,
         ref: existing_utxo,
         min_amount: AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
@@ -569,14 +569,14 @@ tx remove_key_value(
     // }
 
     // Return the ADA value (minus the burned token) to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - min_utxo(removed_entry),
+        amount: payment - fees - min_utxo(removed_map_entry),
     }
 
-    output removed_entry {
+    output removed_map_entry {
         to: governed_map_validator_address,
-        amount: entry_to_remove + min_utxo(removed_entry), // - AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
+        amount: stale_entry + min_utxo(removed_map_entry), // - AnyAsset(governed_map_policy_hash, governed_map_asset_name, 1),
     }
 
     collateral {
@@ -638,9 +638,9 @@ tx insert_d_parameter(
     }
 
     // Input for fees and minimum UTxO value
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(d_param_output),
+        min_amount: fees + min_utxo(d_parameter),
     }
 
     // Mint a D-parameter token for this entry
@@ -655,16 +655,16 @@ tx insert_d_parameter(
     }
 
     // Create the D-parameter UTxO at the D-parameter validator
-    output d_param_output {
+    output d_parameter {
         to: d_parameter_validator_address,
-        amount: AnyAsset(d_parameter_policy_hash, d_parameter_asset_name, 1) + min_utxo(d_param_output),
+        amount: AnyAsset(d_parameter_policy_hash, d_parameter_asset_name, 1) + min_utxo(d_parameter),
         datum: [(), [num_permissioned_candidates, num_registered_candidates], 0],   // Store the D-parameter values
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - min_utxo(d_param_output) + AnyAsset(multi_sig_policy_hash, "", 1),
+        amount: payment - fees - min_utxo(d_parameter) + AnyAsset(multi_sig_policy_hash, "", 1),
     }
 
     // Required signers for the transaction
@@ -729,13 +729,13 @@ tx update_d_parameter(
     }
 
     // Input for fees and minimum UTxO value
-    input source {
+    input payment {
         from: payment_address,
         min_amount: fees + AnyAsset(multi_sig_policy_hash, "", 1),
     }
 
     // Consume the existing D-parameter UTxO
-    input existing_d_param {
+    input prior_d_parameter {
         from: d_parameter_validator_address,
         ref: existing_utxo,
         min_amount: AnyAsset(d_parameter_policy_hash, d_parameter_asset_name, 1),
@@ -743,16 +743,16 @@ tx update_d_parameter(
     }
 
     // Create the updated D-parameter UTxO
-    output updated_d_param {
+    output d_parameter {
         to: d_parameter_validator_address,
-        amount: existing_d_param,
+        amount: prior_d_parameter,
         datum: [(), [num_permissioned_candidates, num_registered_candidates], 0],   // Store the updated values
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees,
+        amount: payment - fees,
     }
 
     // Required signers for the transaction
@@ -823,13 +823,13 @@ tx update_governance(
     }
 
     // Input for fees and minimum UTxO value
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(new_governance_output),
+        min_amount: fees + min_utxo(updated_governance),
     }
 
     // Consume the current governance UTxO (burns the previous governance state)
-    input current_governance {
+    input governance {
         from: version_oracle_validator_address,
         ref: governance_utxoref,
         min_amount: AnyAsset(old_version_oracle_policy_hash, version_oracle_asset_name, 1),
@@ -856,9 +856,9 @@ tx update_governance(
     }
 
     // Create the new governance UTxO with updated parameters
-    output new_governance_output {
+    output updated_governance {
         to: version_oracle_validator_address,
-        amount: current_governance + AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1), // + min_utxo(new_governance_output),
+        amount: governance + AnyAsset(version_oracle_policy_hash, version_oracle_asset_name, 1), // + min_utxo(updated_governance),
         datum: [governance_script_id, version_oracle_policy_hash],  // [script_id, new_policy_hash]
     }
 
@@ -868,9 +868,9 @@ tx update_governance(
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees, // - min_utxo(new_governance_output),
+        amount: payment - fees, // - min_utxo(updated_governance),
     }
 
     // Required signers for the transaction
@@ -964,10 +964,10 @@ tx register_candidate(
 
     // Consume the registration UTxO as proof of registration authorization/payment
     // This UTxO serves as both payment mechanism and proof of registration rights
-    input registration_input {
+    input registration {
         from: candidate_address,
         ref: registration_utxo,  // Specific UTxO reference provided as parameter
-        min_amount: fees + min_utxo(candidate_output),
+        min_amount: fees + min_utxo(candidate_registration),
     }
 
     // Consume any existing registration UTxOs for this candidate to enable updates
@@ -980,10 +980,10 @@ tx register_candidate(
 
     // Create the new candidate registration UTxO with complete validator information
     // Version: 0 indicates the registration data format version
-    output candidate_output {
+    output candidate_registration {
         to: committee_candidate_validator_address,
-        // amount: existing_registrations + min_utxo(candidate_output),  // Consolidate value from existing registrations
-        amount: min_utxo(candidate_output),  // Consolidate value from existing registrations
+        // amount: existing_registrations + min_utxo(candidate_registration),  // Consolidate value from existing registrations
+        amount: min_utxo(candidate_registration),  // Consolidate value from existing registrations
         datum: [
             own_pkh,  // Payment key hash identifying the registrant (first element)
             CandidateRegistration {
@@ -1007,10 +1007,10 @@ tx register_candidate(
     }
 
     // Return change and registration input value to the candidate address
-    output {
+    output change {
         to: candidate_address,
-        // amount: source + registration_input - fees - min_utxo(candidate_output),
-        amount: registration_input - fees - min_utxo(candidate_output),
+        // amount: source + registration - fees - min_utxo(candidate_registration),
+        amount: registration - fees - min_utxo(candidate_registration),
     }
 
     // Collateral for script execution
@@ -1069,22 +1069,22 @@ tx deregister_candidate(
     existing_registration_utxos: List<UtxoRef>,
 ) {
     // Input for transaction fees
-    input source {
+    input payment {
         from: candidate_address,
         min_amount: fees,
     }
 
     // Consume the registration UTxOs to be removed
-    input* registrations_to_remove {
+    input* stale_registrations {
         from: committee_candidate_validator_address,
         ref: existing_registration_utxos, // From the provided list
         redeemer: (),
     }
-    
+
     // Return the ADA value to the candidate address
-    output {
+    output change {
         to: candidate_address,
-        amount: source + registrations_to_remove - fees,
+        amount: payment + stale_registrations - fees,
     }
 
     // Collateral for script execution
@@ -1150,9 +1150,9 @@ tx insert_permissioned_candidates(
     }
 
     // Input for fees and minimum UTxO value
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(candidates_output),
+        min_amount: fees + min_utxo(permissioned_candidates),
     }
 
     // Mint a permissioned candidates token
@@ -1162,16 +1162,16 @@ tx insert_permissioned_candidates(
     }
 
     // Create the permissioned candidates UTxO
-    output candidates_output {
+    output permissioned_candidates {
         to: permissioned_candidates_validator_address,
-        amount: AnyAsset(permissioned_candidates_policy_hash, permissioned_candidates_asset_name, 1) + min_utxo(candidates_output),
+        amount: AnyAsset(permissioned_candidates_policy_hash, permissioned_candidates_asset_name, 1) + min_utxo(permissioned_candidates),
         datum: [(), candidates, 0],  // Store the list of permissioned candidates
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - min_utxo(candidates_output),
+        amount: payment - fees - min_utxo(permissioned_candidates),
     }
 
     // Collateral for script execution
@@ -1241,13 +1241,13 @@ tx update_permissioned_candidates(
     }
 
     // Input for fees and minimum UTxO value
-    input source {
+    input payment {
         from: payment_address,
         min_amount: fees,
     }
 
     // Consume the existing permissioned candidates UTxO
-    input existing_candidates {
+    input permissioned_candidates {
         from: permissioned_candidates_validator_address,
         ref: existing_utxo,
         min_amount: AnyAsset(permissioned_candidates_policy_hash, permissioned_candidates_asset_name, 1),
@@ -1255,16 +1255,16 @@ tx update_permissioned_candidates(
     }
 
     // Create the updated permissioned candidates UTxO
-    output updated_candidates {
+    output updated_permissioned_candidates {
         to: permissioned_candidates_validator_address,
-        amount: existing_candidates,
+        amount: permissioned_candidates,
         datum: [(), candidates, 0],  // Store the updated list of permissioned candidates
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees,
+        amount: payment - fees,
     }
 
     // Collateral for script execution
@@ -1343,9 +1343,9 @@ tx create_reserve(
     }
 
     // Input for fees, minimum UTxO value, and reward tokens
-    input source {
+    input payment {
         from: payment_address,
-        min_amount: fees + min_utxo(reserve_output) + AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount),
+        min_amount: fees + min_utxo(reserve) + AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount),
     }
 
     // Mint a reserve auth token
@@ -1367,11 +1367,11 @@ tx create_reserve(
     }
 
     // Create the reserve UTxO with initial settings
-    output reserve_output {
+    output reserve {
         to: reserve_validator_address,
-        amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1) + 
-                AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount) + 
-                min_utxo(reserve_output),
+        amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1) +
+                AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount) +
+                min_utxo(reserve),
         datum: [
             [reward_token_policy_id, reward_token_asset_name],     // ReserveImmutableSettings.token
             [total_accrued_function_script_hash, 0],               // ReserveMutableSettings (hash, initial_incentive=0)
@@ -1381,17 +1381,17 @@ tx create_reserve(
 
     // Create ICS Authorized UTxOs (multiple individual outputs)
     // Note: In practice, this would need to be generated for the specific number needed
-    output ics_output_1 {
+    output ics_authority {
         to: illiquid_circulation_supply_validator_address,
-        amount: AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, 1) + 
-                min_utxo(ics_output_1),
+        amount: AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, 1) +
+                min_utxo(ics_authority),
         datum: (),  // Unit datum
     }
 
     // Return change to the payment address (including governance token)
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - min_utxo(reserve_output) - AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount) + 
+        amount: payment - fees - min_utxo(reserve) - AnyAsset(reward_token_policy_id, reward_token_asset_name, reward_tokens_amount) +
                 AnyAsset(governance_policy_hash, governance_asset_name, 1),
     }
 
@@ -1480,13 +1480,13 @@ tx deposit_to_reserve(
     }
 
     // Input for fees and tokens to deposit
-    input source {
+    input payment {
         from: payment_address,
         min_amount: fees + AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount),
     }
 
     // Consume the existing reserve UTxO
-    input existing_reserve {
+    input reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
         min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
@@ -1502,14 +1502,14 @@ tx deposit_to_reserve(
     // Create the updated reserve UTxO with additional tokens
     output updated_reserve {
         to: reserve_validator_address,
-        amount: existing_reserve + AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount),
+        amount: reserve + AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount),
         // datum: preserve existing datum (same reserve settings)
     }
 
     // Return change to the payment address (including governance token)
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees - AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount) + 
+        amount: payment - fees - AnyAsset(reward_token_policy_id, reward_token_asset_name, deposit_amount) +
                 AnyAsset(governance_policy_hash, governance_asset_name, 1),
     }
 
@@ -1619,22 +1619,22 @@ tx release_from_reserve(
     }
 
     // Input for transaction fees
-    input source {
+    input payment {
         from: payment_address,
         min_amount: fees,
     }
 
     // Consume the existing reserve UTxO
-    input existing_reserve {
+    input reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
-        min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1) + 
+        min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1) +
                     AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
         redeemer: 1,  // ReleaseFromReserve redeemer
     }
 
     // Consume the existing ICS UTxO
-    input existing_ics {
+    input ics {
         from: illiquid_circulation_supply_validator_address,
         ref: existing_ics_utxo,
         min_amount: AnyAsset(illiquid_circulation_supply_authority_token_policy_hash, illiquid_circulation_supply_authority_token_asset_name, 1),
@@ -1651,21 +1651,21 @@ tx release_from_reserve(
     // Create the updated reserve UTxO with reduced tokens
     output updated_reserve {
         to: reserve_validator_address,
-        amount: existing_reserve - AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
+        amount: reserve - AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
         // datum: updated ReserveDatum with incremented token_total_amount_transferred
     }
 
     // Transfer released tokens to the illiquid supply with ReserveTransfer datum
     output updated_ics {
         to: illiquid_circulation_supply_validator_address,
-        amount: existing_ics + AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
+        amount: ics + AnyAsset(reward_token_policy_id, reward_token_asset_name, release_amount),
         datum: 0,  // TokenTransferDatumV1::ReserveTransfer (Constr 0 [])
     }
 
     // Return change to the payment address
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees,
+        amount: payment - fees,
     }
 
     // Set validity start interval for temporal validation
@@ -1760,13 +1760,13 @@ tx update_reserve_settings(
     }
 
     // Input for transaction fees
-    input source {
+    input payment {
         from: payment_address,
         min_amount: fees,
     }
 
     // Consume the existing reserve UTxO
-    input existing_reserve {
+    input reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
         min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
@@ -1782,7 +1782,7 @@ tx update_reserve_settings(
     // Create the updated reserve UTxO with new settings
     output updated_reserve {
         to: reserve_validator_address,
-        amount: existing_reserve,
+        amount: reserve,
         // datum: Updated ReserveDatum with new total_accrued_function_asset_name
         datum: [
             [reward_token_policy_id, reward_token_asset_name],        // ReserveImmutableSettings.token (unchanged)
@@ -1792,9 +1792,9 @@ tx update_reserve_settings(
     }
 
     // Return change to the payment address (including governance token)
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees + AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: payment - fees + AnyAsset(governance_policy_hash, governance_asset_name, 1),
     }
 
     // Collateral for script execution
@@ -1886,13 +1886,13 @@ tx handover_reserve(
     }
 
     // Input for transaction fees
-    input source {
+    input payment {
         from: payment_address,
         min_amount: fees,
     }
 
     // Consume the existing reserve UTxO
-    input existing_reserve {
+    input reserve {
         from: reserve_validator_address,
         ref: existing_reserve_utxo,
         min_amount: AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
@@ -1913,16 +1913,16 @@ tx handover_reserve(
 
     // Transfer all reserve tokens to the illiquid circulation supply validator
     // Note: The datum is set to ReserveTransfer if tokens > 0, otherwise unit datum
-    output illiquid_supply_output {
+    output illiquid_supply {
         to: illiquid_circulation_supply_validator_address,
-        amount: existing_reserve - AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
+        amount: reserve - AnyAsset(reserve_auth_policy_hash, reserve_auth_asset_name, 1),
         datum: 0,  // TokenTransferDatumV1::ReserveTransfer (Constr 0 []) if tokens > 0, otherwise unit
     }
 
     // Return change to the payment address (including governance token)
-    output {
+    output change {
         to: payment_address,
-        amount: source - fees + AnyAsset(governance_policy_hash, governance_asset_name, 1),
+        amount: payment - fees + AnyAsset(governance_policy_hash, governance_asset_name, 1),
     }
 
     // Collateral for script execution
