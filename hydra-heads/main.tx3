@@ -229,7 +229,7 @@ tx init(
         },
     }
 
-    input* source {
+    input* funding {
         from: Participant,
         min_amount: Ada(head_utxo_lovelace + initial_utxo_lovelace) + fees,
     }
@@ -263,7 +263,7 @@ tx init(
     }
 
     // Head state UTxO carrying the ST.
-    output head {
+    output head_state {
         to: HeadScript,
         amount: Ada(head_utxo_lovelace) + st,
         datum: HeadState::Initial {
@@ -278,7 +278,7 @@ tx init(
     // Pre-allocated PT bucket at µInitial. Real Hydra emits one output
     // per participant, each holding that participant's PT; in Tx3 we
     // model the aggregate (`pt_count` reflects the participant list size).
-    output initial {
+    output participation_token {
         to: InitialScript,
         amount: Ada(initial_utxo_lovelace)
               + AnyAsset(head_id, head_id, pt_count),
@@ -291,9 +291,9 @@ tx init(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: source + seed
+        amount: funding + seed
               - Ada(head_utxo_lovelace + initial_utxo_lovelace)
               - st
               - fees,
@@ -328,7 +328,7 @@ tx commit(
     }
 
     // The PT-bearing UTxO at µInitial.
-    input pt_in {
+    input participation_token {
         from: InitialScript,
         ref: initial_pt_ref,
         datum_is: InitialDatum,
@@ -352,7 +352,7 @@ tx commit(
     }
 
     // µCommit output bundling the PT with the committed value.
-    output commit_out {
+    output commitment {
         to: CommitScript,
         amount: Ada(commit_utxo_lovelace + committed_lovelace) + pt,
         datum: CommitDatum {
@@ -366,9 +366,9 @@ tx commit(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: funds + pt_in
+        amount: funds + participation_token
               - Ada(commit_utxo_lovelace + committed_lovelace)
               - pt
               - fees,
@@ -417,21 +417,21 @@ tx abort(
         ref: initial_script_ref,
     }
 
-    input head_in {
+    input head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
         redeemer: HeadRedeemer::Abort {},
     }
 
-    input commit_in {
+    input commitment {
         from: CommitScript,
         ref: commit_ref,
         datum_is: CommitDatum,
         redeemer: CommitRedeemer::ViaAbort {},
     }
 
-    input initial_in {
+    input participation_token {
         from: InitialScript,
         ref: initial_ref,
         datum_is: InitialDatum,
@@ -450,7 +450,7 @@ tx abort(
     }
 
     // Refund committed funds back to the committing party.
-    output {
+    output refund {
         to: refund_recipient,
         amount: Ada(refund_lovelace),
     }
@@ -459,9 +459,9 @@ tx abort(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in + commit_in + initial_in
+        amount: head_state + commitment + participation_token
               - Ada(refund_lovelace)
               - st
               - pt_bundle
@@ -501,14 +501,14 @@ tx collect_com(
         ref: commit_script_ref,
     }
 
-    input head_in {
+    input prior_head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
         redeemer: HeadRedeemer::CollectCom {},
     }
 
-    input commit_in {
+    input commitment {
         from: CommitScript,
         ref: commit_ref,
         datum_is: CommitDatum,
@@ -521,7 +521,7 @@ tx collect_com(
     }
 
     // ST + every PT now sit on the head state UTxO.
-    output head_out {
+    output head_state {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
         datum: HeadState::Open {
@@ -535,9 +535,9 @@ tx collect_com(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in + commit_in
+        amount: prior_head_state + commitment
               - Ada(head_out_lovelace)
               - st - pts - fees,
     }
@@ -556,12 +556,12 @@ tx deposit(
     /// Min-UTxO lovelace required on the produced µDeposit output.
     deposit_utxo_lovelace: Int,
 ) {
-    input* source {
+    input* funding {
         from: Participant,
         min_amount: Ada(deposit_lovelace + deposit_utxo_lovelace) + fees,
     }
 
-    output deposit_out {
+    output deposit {
         to: DepositScript,
         amount: Ada(deposit_utxo_lovelace + deposit_lovelace),
         datum: DepositDatum {
@@ -575,9 +575,9 @@ tx deposit(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: source - Ada(deposit_utxo_lovelace + deposit_lovelace) - fees,
+        amount: funding - Ada(deposit_utxo_lovelace + deposit_lovelace) - fees,
     }
 }
 
@@ -617,7 +617,7 @@ tx increment(
         ref: deposit_script_ref,
     }
 
-    input head_in {
+    input prior_head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
@@ -632,7 +632,7 @@ tx increment(
         },
     }
 
-    input deposit_in {
+    input deposit {
         from: DepositScript,
         ref: deposit_ref,
         datum_is: DepositDatum,
@@ -644,7 +644,7 @@ tx increment(
         min_amount: fees,
     }
 
-    output head_out {
+    output head_state {
         to: HeadScript,
         amount: Ada(head_out_lovelace + pulled_lovelace) + st + pts,
         datum: HeadState::Open {
@@ -658,9 +658,9 @@ tx increment(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in + deposit_in
+        amount: prior_head_state + deposit
               - Ada(head_out_lovelace + pulled_lovelace)
               - st - pts - fees,
     }
@@ -677,7 +677,7 @@ tx recover(
         ref: deposit_script_ref,
     }
 
-    input deposit_in {
+    input deposit {
         from: DepositScript,
         ref: deposit_ref,
         datum_is: DepositDatum,
@@ -700,9 +700,9 @@ tx recover(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: deposit_in - fees,
+        amount: deposit - fees,
     }
 }
 
@@ -738,7 +738,7 @@ tx decrement(
         ref: head_script_ref,
     }
 
-    input head_in {
+    input prior_head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
@@ -754,7 +754,7 @@ tx decrement(
         min_amount: fees,
     }
 
-    output head_out {
+    output head_state {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
         datum: HeadState::Open {
@@ -764,7 +764,7 @@ tx decrement(
         },
     }
 
-    output released {
+    output released_funds {
         to: release_recipient,
         amount: Ada(released_lovelace),
     }
@@ -773,9 +773,9 @@ tx decrement(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in
+        amount: prior_head_state
               - Ada(head_out_lovelace + released_lovelace)
               - st - pts - fees,
     }
@@ -815,7 +815,7 @@ tx close(
         ref: head_script_ref,
     }
 
-    input head_in {
+    input prior_head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
@@ -831,7 +831,7 @@ tx close(
         min_amount: fees,
     }
 
-    output head_out {
+    output head_state {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
         datum: HeadState::Closed {
@@ -847,9 +847,9 @@ tx close(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in - Ada(head_out_lovelace) - st - pts - fees,
+        amount: prior_head_state - Ada(head_out_lovelace) - st - pts - fees,
     }
 }
 
@@ -887,7 +887,7 @@ tx contest(
         ref: head_script_ref,
     }
 
-    input head_in {
+    input prior_head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
@@ -907,7 +907,7 @@ tx contest(
         until_slot: tip_slot() + 600,
     }
 
-    output head_out {
+    output head_state {
         to: HeadScript,
         amount: Ada(head_out_lovelace) + st + pts,
         datum: HeadState::Closed {
@@ -923,9 +923,9 @@ tx contest(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in - Ada(head_out_lovelace) - st - pts - fees,
+        amount: prior_head_state - Ada(head_out_lovelace) - st - pts - fees,
     }
 }
 
@@ -965,7 +965,7 @@ tx fanout(
         ref: head_script_ref,
     }
 
-    input head_in {
+    input head_state {
         from: HeadScript,
         ref: head_ref,
         datum_is: HeadState,
@@ -991,7 +991,7 @@ tx fanout(
         redeemer: HeadPolicyRedeemer::Burn {},
     }
 
-    output {
+    output fanout_payout {
         to: fanout_recipient,
         amount: Ada(fanout_lovelace),
     }
@@ -1000,8 +1000,8 @@ tx fanout(
         Participant,
     }
 
-    output {
+    output change {
         to: Participant,
-        amount: head_in - Ada(fanout_lovelace) - st - pts - fees,
+        amount: head_state - Ada(fanout_lovelace) - st - pts - fees,
     }
 }
