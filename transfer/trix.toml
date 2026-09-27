@@ -1,0 +1,11 @@
+[protocol]
+scope = "open-tx3"
+name = "transfer"
+version = "0.1.0"
+description = "Send ADA from one Cardano address to another"
+repository = "https://github.com/open-tx3/acme-protocols"
+main = "main.tx3"
+readme = "README.md"
+
+[ledger]
+family = "cardano"

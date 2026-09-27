@@ -6,6 +6,7 @@ Tx3 models of Acme protocols.
 
 - [`hydra-heads`](./hydra-heads/)
 - [`partner-chain-gov`](./partner-chain-gov/)
+- [`transfer`](./transfer/)
 
 ## Provenance
 
